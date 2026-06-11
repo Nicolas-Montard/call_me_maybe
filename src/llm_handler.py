@@ -8,6 +8,7 @@ from . import JsonManager
 import json
 from llm_sdk import Small_LLM_Model
 import numpy as np
+from typing import Callable
 
 class LlmHandler(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -75,6 +76,34 @@ class LlmHandler(BaseModel):
             f"<|im_start|>assistant\n"
         )
     
+    def get_all_args_of_func(self, user_prompt: str, fn_def: dict):
+        pass
+    
+    def validate_string(self, answer: list[int], logits: list[float]) -> list[float]:
+        if (len(answer) == 1):
+            for i, logit in enumerate(logits):
+                if(self.llm.decode([i]) != "\""):
+                    logits[i] = float('-inf')
+        return logits
+
+    def get_valid_string(self, prompt: str) -> str:
+        data_list: list[int] = self.llm.encode(prompt)[0].tolist()
+        answer: list[int] = []
+        while(len(answer) < 2 or self.id_to_token[answer[-1]] != "\""):
+            logits = self.llm.get_logits_from_input_ids(data_list + answer)
+            next_char_id = int(np.argmax(self.validate_string(answer, logits)))
+            answer.append(next_char_id)
+        return self.llm.decode(answer)
+            
+
+    def get_valid_input_arg(self, answer: list[int], logits: list[float], 
+                            function: dict, arg_nb: int) -> list[float]:
+        parameter_name, parameter_type = list(function["parameters"].items()[arg_nb - 1])
+        if (parameter_type == "string"):
+            pass
+            
+        return logits
+
     def get_prompt_for_args(self, user_prompt: str, fn_def: dict) -> str:
         params = ", ".join(
             f"{name}: {p['type']}"
@@ -93,3 +122,4 @@ class LlmHandler(BaseModel):
             f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
             f"<|im_start|>assistant\n"
         )
+    
