@@ -8,7 +8,7 @@ from . import JsonManager
 import json
 from llm_sdk import Small_LLM_Model
 import numpy as np
-from typing import Callable
+from typing import Any
 
 class LlmHandler(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -28,9 +28,6 @@ class LlmHandler(BaseModel):
         self.fn_names = [x['name'] for x in JsonManager.fn_def]
         self.fn_descriptions = [x['description'] for x in JsonManager.fn_def]
         return self
-    
-    def get_answer(self, user_prompt: str):
-        pass
 
     def get_valid_input_name(self, answer: list[int], logits: list[float]) \
         -> list[float]:
@@ -76,8 +73,15 @@ class LlmHandler(BaseModel):
             f"<|im_start|>assistant\n"
         )
     
-    def get_all_args_of_func(self, user_prompt: str, fn_def: dict):
+    def get_answer_for_one_function(self):
         pass
+    
+    def get_all_args_of_func(self, user_prompt: str, fn_def: dict):
+        answers = []
+        for i in range(len(fn_def['parameters'])):
+            answers.append(
+                self.get_valid_input_arg(fn_def, i + 1, user_prompt))
+        return answers
     
     def validate_string(self, answer: list[int], logits: list[float]) -> list[float]:
         if (len(answer) == 0):
@@ -96,16 +100,30 @@ class LlmHandler(BaseModel):
         return self.llm.decode(answer)
     
 
-    def get_valid_input_arg(self, logits: list[float], 
-                            function: dict, arg_nb: int, user_prompt: str) -> list[float]:
+    def get_valid_input_arg(self, function: dict, arg_nb: int,
+                            user_prompt: str) -> Any:
         arg_name, arg_type = list(function["parameters"].items()[arg_nb - 1])
+        result = None
         if (arg_type == "string"):
             result = self.get_valid_string(
                 self.get_prompt_for_single_arg(user_prompt, function, arg_name, arg_type))
-            
-            
-
-        return logits
+        elif (arg_type == "number"):
+            result = self.get_valid_number(self.get_prompt_for_single_arg(
+                user_prompt, function, arg_name, arg_type
+                ))
+        elif (arg_type == "boolean"):
+            result = self.get_valid_boolean(self.get_prompt_for_single_arg(
+                user_prompt, function, arg_name, arg_type
+                ))
+        elif (arg_type == "array"):
+            result = self.get_valid_array(self.get_prompt_for_single_arg(
+                user_prompt, function, arg_name, arg_type
+                ))
+        else:
+            result = self.get_valid_object(self.get_prompt_for_single_arg(
+                user_prompt, function, arg_name, arg_type
+            ))
+        return result
     
     def validate_number(self, answer: list[int], logits: list[float]) -> list[float]:
         for i in range(len(logits)):
@@ -122,7 +140,7 @@ class LlmHandler(BaseModel):
                 logits[i] = float('-inf')
         return logits
 
-    def get_valid_number(self, prompt: str) -> str:
+    def get_valid_number(self, prompt: str) -> float:
         data_list: list[int] = self.llm.encode(prompt)[0].tolist()
         answer: list[int] = []
         while len(answer) < 2 or self.id_to_token[answer[-1]] != "\"":
@@ -130,7 +148,7 @@ class LlmHandler(BaseModel):
             next_char_id = int(np.argmax(self.validate_number(answer, logits)))
             answer.append(next_char_id)
         result = self.llm.decode(answer).strip('"')
-        return result
+        return float(result)
     
     def validate_boolean(self, answer: list[int], logits: list[float]) -> list[float]:
         for i in range(len(logits)):
@@ -139,7 +157,7 @@ class LlmHandler(BaseModel):
                 logits[i] = float('-inf')
         return logits
 
-    def get_valid_boolean(self, prompt: str) -> str:
+    def get_valid_boolean(self, prompt: str) -> bool:
         data_list: list[int] = self.llm.encode(prompt)[0].tolist()
         answer: list[int] = []
         while True:
@@ -150,7 +168,7 @@ class LlmHandler(BaseModel):
             result = self.llm.decode(answer).strip()
             if result in {"true", "false"}:
                 break
-        return result
+        return bool(result)
     
     def validate_array(self, answer: list[int], logits: list[float]) -> list[float]:
         for i in range(len(logits)):
@@ -181,7 +199,7 @@ class LlmHandler(BaseModel):
             logits[i] = float('-inf')
         return logits
 
-    def get_valid_array(self, prompt: str) -> str:
+    def get_valid_array(self, prompt: str) -> list[Any]:
         data_list: list[int] = self.llm.encode(prompt)[0].tolist()
         answer: list[int] = []
         while True:
@@ -192,7 +210,7 @@ class LlmHandler(BaseModel):
             result = self.llm.decode(answer).strip()
             if result.endswith(']'):
                 break
-        return result
+        return json.loads(result)
     
     def validate_object(self, answer: list[int], logits: list[float]) -> list[float]:
         for i in range(len(logits)):
@@ -223,7 +241,7 @@ class LlmHandler(BaseModel):
             logits[i] = float('-inf')
         return logits
 
-    def get_valid_object(self, prompt: str) -> str:
+    def get_valid_object(self, prompt: str) -> dict:
         data_list: list[int] = self.llm.encode(prompt)[0].tolist()
         answer: list[int] = []
         while True:
@@ -234,7 +252,7 @@ class LlmHandler(BaseModel):
             result = self.llm.decode(answer).strip()
             if result.endswith('}'):
                 break
-        return result
+        return json.loads(result)
 
     def get_prompt_for_single_arg(self, user_prompt: str, fn_def: dict, arg_name: str, arg_type: str) -> str:
         type_instructions = {
