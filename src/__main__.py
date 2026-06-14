@@ -18,8 +18,6 @@ def main():
         print(f"ERROR: {e}")
         exit()
     llm_handler: LlmHandler = LlmHandler()
-    result = llm_handler.get_name_of_func(JsonManager.prompt[0])
-    print(f"Généré : {result}")
     
 
 		
