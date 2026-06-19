@@ -67,29 +67,5 @@
     "returns": {
       "type": "string"
     }
-  },
-  {
-    "name": "put_in_array",
-    "description": "Add two string in an array and return it",
-    "parameters": {
-      "a": {
-        "type": "array"
-      }
-    },
-    "returns": {
-      "type": "array"
-    }
-  },
-  {
-    "name": "put_in_object",
-    "description": "put a value in an object with the key 1",
-    "parameters": {
-      "value": {
-        "type": "object"
-      }
-    },
-    "returns": {
-      "type": "object"
-    }
   }
 ]

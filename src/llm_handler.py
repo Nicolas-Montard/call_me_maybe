@@ -114,6 +114,10 @@ class LlmHandler(BaseModel):
             result = self.get_valid_number(self.get_prompt_for_single_arg(
                 user_prompt, function, arg_name, arg_type, already_extracted
                 ))
+        elif (arg_type == "integer"):
+            result = self.get_valid_integer(self.get_prompt_for_single_arg(
+                user_prompt, function, arg_name, arg_type, already_extracted
+                ))
         elif (arg_type == "boolean"):
             result = self.get_valid_boolean(self.get_prompt_for_single_arg(
                 user_prompt, function, arg_name, arg_type, already_extracted
@@ -165,6 +169,31 @@ class LlmHandler(BaseModel):
             answer.append(next_char_id)
         result = self.llm.decode(answer).strip('"')
         return float(result)
+    
+    def validate_integer(self, answer: list[int], logits: list[float]) -> list[float]:
+        for i in range(len(logits)):
+            current = self.llm.decode(answer + [i]).strip('"')
+            if len(answer) == 0:
+                if self.id_to_token.get(i, "") != "\"":
+                    logits[i] = float('-inf')
+                continue
+            if self.id_to_token.get(i, "") == "\"":
+                continue
+            try:
+                int(current)
+            except ValueError:
+                logits[i] = float('-inf')
+        return logits
+    
+    def get_valid_integer(self, prompt: str) -> float:
+        data_list: list[int] = self.llm.encode(prompt)[0].tolist()
+        answer: list[int] = []
+        while len(answer) < 2 or self.id_to_token[answer[-1]] != "\"":
+            logits = self.llm.get_logits_from_input_ids(data_list + answer)
+            next_char_id = int(np.argmax(self.validate_number(answer, logits)))
+            answer.append(next_char_id)
+        result = self.llm.decode(answer).strip('"')
+        return int(result)
     
     def validate_boolean(self, answer: list[int], logits: list[float]) -> list[float]:
         for i in range(len(logits)):
@@ -276,6 +305,12 @@ class LlmHandler(BaseModel):
                 break
         return json.loads(result)
 
+    def get_all_answers(self) -> list[dict]:
+        answers: list[dict] = []
+        for prompt in JsonManager.prompt:
+            answers.append(self.get_answer_for_one_function(prompt))
+        return answers
+
     def get_prompt_for_single_arg(self, user_prompt: str, fn_def: dict, arg_name: str, arg_type: str, already_extracted: dict = {}) -> str:
         type_instructions = {
             "string": 'Respond with ONLY a JSON string (with quotes).',
@@ -283,6 +318,7 @@ class LlmHandler(BaseModel):
             "boolean": 'Respond with ONLY a JSON boolean (without quotes).',
             "array": 'Respond with ONLY a JSON array of primitives.',
             "object": 'Respond with ONLY a JSON object with primitive values.',
+            "integer": 'Respond with ONLY a JSON integer (with quotes).'
         }
         instruction = type_instructions.get(arg_type, f"Respond with ONLY a JSON {arg_type} (with quotes).")
 
