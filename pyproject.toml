@@ -5,9 +5,12 @@ requires-python = ">=3.10"
 dependencies = [
     "pydantic",
     "numpy",
+    "llm_sdk"
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=9.1.0",
 ]
+[tool.uv.sources]
+llm_sdk = { path = "llm_sdk" }
