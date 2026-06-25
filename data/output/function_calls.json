@@ -83,5 +83,32 @@
             "regex": "cat\": ",
             "replacement": "dog"
         }
+    },
+    {
+        "prompt": "concatenate 'this is' and 'a phrase'",
+        "name": "fn_put_in_array",
+        "parameters": {
+            "a": [
+                "this",
+                "a",
+                "phrase"
+            ]
+        }
+    },
+    {
+        "prompt": "Create a user with the name John and the age 30.",
+        "name": "fn_create_user",
+        "parameters": {
+            "user": {
+                "": "John"
+            }
+        }
+    },
+    {
+        "prompt": "Invert the boolean value True.",
+        "name": "fn_invert_boolean",
+        "parameters": {
+            "value": true
+        }
     }
 ]

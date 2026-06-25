@@ -1,5 +1,5 @@
 try:
-    from pydantic import BaseModel, Field, model_validator, ValidationError, ConfigDict
+    from pydantic import BaseModel, ConfigDict
 except ModuleNotFoundError as e:
     print("pydantic is not installed on this system")
     print(e)
@@ -12,22 +12,26 @@ from typing import Any
 
 class LlmHandler(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    vocab_path: dict|None = Field(default=None)
+    vocab_path: dict = {}
     llm: Small_LLM_Model = Small_LLM_Model()
-    fn_names: list[str]|None = Field(default=None)
-    fn_descriptions: list[str]|None = Field(default=None)
     token_to_id: dict = {}
     id_to_token: dict = {}
+    fn_names: list = []
+    fn_descriptions: list = []
+    json_manager: JsonManager | None = None
+    fn_def_path: str
+    prompt_path: str
+    
 
-    @model_validator(mode='after')
-    def init_values(self):
+    def model_post_init(self, __context) -> None:
         vocab_path = self.llm.get_path_to_vocab_file()
-        with open(vocab_path, encoding='utf-8') as f: 
+        with open(vocab_path) as f:
             self.token_to_id = json.load(f)
             self.id_to_token = {v: k for k, v in self.token_to_id.items()}
-        self.fn_names = [x['name'] for x in JsonManager.fn_def]
-        self.fn_descriptions = [x['description'] for x in JsonManager.fn_def]
-        return self
+        json_values = JsonManager.load_files(self.fn_def_path, self.prompt_path)
+        self.json_manager = JsonManager(prompts=json_values[0], fn_def=json_values[1])
+        self.fn_names = [x['name'] for x in self.json_manager.get_fn_defs()]
+        self.fn_descriptions = [x['description'] for x in self.json_manager.get_fn_defs()]
     
     def forbid_escape_characters(self, logits: list[float]) -> list[float]:
         for i in range(len(logits)):
@@ -38,8 +42,6 @@ class LlmHandler(BaseModel):
 
     def get_valid_input_name(self, answer: list[int], logits: list[float]) \
         -> list[float]:
-        if (self.fn_names is None or self.fn_descriptions is None):
-            raise ValueError("fn_names or fn_descriptions are none")
         for i, logit in enumerate(logits):
             temp_answer = answer.copy()
             temp_answer.append(i)
@@ -57,26 +59,22 @@ class LlmHandler(BaseModel):
         return logits
 
     def get_name_of_func(self, user_prompt: str) -> str:
-        if (self.fn_names is None or self.fn_descriptions is None):
-            raise ValueError("fn_names or fn_descriptions are none")
         prompt = self.get_prompt_for_name(user_prompt)
         data_list: list[int] = self.llm.encode(prompt)[0].tolist()
         answer: list[int] = []
-        print(f"get_name_of_func user prompt: {user_prompt}")
-        while(True):
+        result = ""
+        for i in range(200):
             logits = self.llm.get_logits_from_input_ids(data_list + answer)
             next_char_id = int(np.argmax(self.get_valid_input_name(answer, logits)))
             answer.append(next_char_id)
             result = self.llm.decode(answer)
-            print(f"get_name_of_func result: {result}/")
-            print(f"get_name_of_func answer: {self.llm.decode(answer)}/")
             if (result in self.fn_names):
                 break
         return result
     
     def get_prompt_for_name(self, user_prompt: str) -> str:
         fn_list = ""
-        for fn in JsonManager.fn_def:
+        for fn in self.json_manager.get_fn_defs():
             fn_list += f"- {fn['name']}: {fn['description']}\n"
         system = (
         "You are a function selection assistant. "
@@ -115,14 +113,14 @@ class LlmHandler(BaseModel):
     def get_valid_string(self, prompt: str) -> str:
         data_list: list[int] = self.llm.encode(prompt)[0].tolist()
         answer: list[int] = []
-        while True:
+        result = ""
+        for i in range(200):
             logits = self.llm.get_logits_from_input_ids(data_list + answer)
             next_char_id = int(np.argmax(self.validate_string(answer, logits)))
             answer.append(next_char_id)
             result = self.llm.decode(answer)
             if len(result) >= 2 and result.startswith('"') and result.endswith('"'):
                 break
-            print(f"get_vaalid_string result: {result}")
         return result.strip('"')
 
     def get_valid_input_arg(self, function: dict, arg_nb: int,
@@ -172,8 +170,7 @@ class LlmHandler(BaseModel):
     
     def get_answer_for_one_function(self, user_prompt: str) -> dict:
         fn_name = self.get_name_of_func(user_prompt)
-        print(f"get_answer_for_one_function fn_name: {fn_name}")
-        fn = next(fn for fn in JsonManager.fn_def if fn['name'] == fn_name)
+        fn = next(fn for fn in self.json_manager.get_fn_defs() if fn['name'] == fn_name)
         parameters = {}
         parameters_value = self.get_all_args_of_func(user_prompt, fn)
         for i, param in enumerate(parameters_value):
@@ -187,10 +184,11 @@ class LlmHandler(BaseModel):
     def get_valid_number(self, prompt: str) -> float:
         data_list: list[int] = self.llm.encode(prompt)[0].tolist()
         answer: list[int] = []
-        while len(answer) < 2 or self.id_to_token[answer[-1]] != "\"":
-            logits = self.llm.get_logits_from_input_ids(data_list + answer)
-            next_char_id = int(np.argmax(self.validate_number(answer, logits)))
-            answer.append(next_char_id)
+        for i in range(200):
+            if len(answer) < 2 or self.id_to_token[answer[-1]] != "\"":
+                logits = self.llm.get_logits_from_input_ids(data_list + answer)
+                next_char_id = int(np.argmax(self.validate_number(answer, logits)))
+                answer.append(next_char_id)
         result = self.llm.decode(answer).strip('"')
         return float(result)
     
@@ -212,10 +210,13 @@ class LlmHandler(BaseModel):
     def get_valid_integer(self, prompt: str) -> float:
         data_list: list[int] = self.llm.encode(prompt)[0].tolist()
         answer: list[int] = []
-        while len(answer) < 2 or self.id_to_token[answer[-1]] != "\"":
-            logits = self.llm.get_logits_from_input_ids(data_list + answer)
-            next_char_id = int(np.argmax(self.validate_number(answer, logits)))
-            answer.append(next_char_id)
+        for i in range(50):
+            if len(answer) < 2 or self.id_to_token[answer[-1]] != "\"":
+                logits = self.llm.get_logits_from_input_ids(data_list + answer)
+                next_char_id = int(np.argmax(self.validate_number(answer, logits)))
+                answer.append(next_char_id)
+            else:
+                break
         result = self.llm.decode(answer).strip('"')
         return int(result)
     
@@ -229,7 +230,8 @@ class LlmHandler(BaseModel):
     def get_valid_boolean(self, prompt: str) -> bool:
         data_list: list[int] = self.llm.encode(prompt)[0].tolist()
         answer: list[int] = []
-        while True:
+        result = ""
+        for i in range(200):
             logits = self.llm.get_logits_from_input_ids(data_list + answer)
             logits = self.validate_boolean(answer, logits)
             next_char_id = int(np.argmax(logits))
@@ -274,7 +276,8 @@ class LlmHandler(BaseModel):
     def get_valid_array(self, prompt: str) -> list[Any]:
         data_list: list[int] = self.llm.encode(prompt)[0].tolist()
         answer: list[int] = self.llm.encode('["')[0].tolist()
-        while True:
+        result = ""
+        for i in range(50):
             logits = self.llm.get_logits_from_input_ids(data_list + answer)
             logits = self.validate_array(answer, logits)
             next_char_id = int(np.argmax(logits))
@@ -289,9 +292,6 @@ class LlmHandler(BaseModel):
             temp = self.llm.decode(answer + [i])
             if any(ord(c) < 32  for c in temp):
                 logits[i] = float("-inf")
-                continue
-            if (temp[-1] == "\n"):
-                logits[i] = float('-inf')
                 continue
             if len(answer) == 0 and not temp.startswith('{'):
                 logits[i] = float('-inf')
@@ -322,7 +322,8 @@ class LlmHandler(BaseModel):
     def get_valid_object(self, prompt: str) -> dict:
         data_list: list[int] = self.llm.encode(prompt)[0].tolist()
         answer: list[int] = self.llm.encode('{"')[0].tolist()
-        while True:
+        result = ""
+        for i in range(200):
             logits = self.llm.get_logits_from_input_ids(data_list + answer)
             logits = self.validate_object(answer, logits)
             next_char_id = int(np.argmax(logits))
@@ -334,9 +335,8 @@ class LlmHandler(BaseModel):
 
     def get_all_answers(self) -> list[dict]:
         answers: list[dict] = []
-        for prompt in JsonManager.prompt:
-            answers.append(self.get_answer_for_one_function(prompt["prompt"]))
-            print(f"Last answers {answers[-1]}")
+        for prompt in self.json_manager.get_prompts():
+            answers.append(self.get_answer_for_one_function(prompt))
         return answers
 
     def get_prompt_for_single_arg(self, user_prompt: str, fn_def: dict, arg_name: str, arg_type: str, already_extracted: dict = {}) -> str:

@@ -31,5 +31,14 @@
   },
   {
     "prompt": "Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat'"
+  },
+  {
+    "prompt": "concatenate 'this is' and 'a phrase'"
+  },
+  {
+    "prompt": "Create a user with the name John and the age 30."
+  },
+  {
+    "prompt": "Invert the boolean value True."
   }
 ]

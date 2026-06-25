@@ -1,18 +1,50 @@
 try:
-    from pydantic import BaseModel
+    from pydantic import BaseModel, model_validator
 except ModuleNotFoundError as e:
     print("pydantic is not installed on this system")
     print(e)
     exit()
 import json
+from enum import Enum
+
+
+
+class TypeValue(str, Enum):
+    string = "string"
+    number = "number"
+    boolean = "boolean"
+    array = "array"
+    object = "object"
+    integer = "integer"
+
+
+class Prompt(BaseModel):
+    prompt: str
+
+class Type(BaseModel):
+    type: TypeValue
+
+class FunctionDef(BaseModel):
+    name: str
+    description: str
+    parameters: dict[str, Type]
+    returns: Type
+
 
 class JsonManager(BaseModel):
-    prompt: dict
-    fn_def: dict
+    prompts: list[Prompt]
+    fn_def: list[FunctionDef]
 
-    @classmethod
-    def load_files(cls):
-        with open("data/input/functions_definition.json", "r") as file:
-            cls.fn_def = json.load(file)
-        with open("data/input/function_calling_tests.json", "r") as file:
-            cls.prompt = json.load(file)
+    @staticmethod
+    def load_files(fn_def_path: str, prompt_path: str):
+        with open(fn_def_path, "r") as file:
+            fn_def = json.load(file)
+        with open(prompt_path, "r") as file:
+            prompts = json.load(file)
+        return [prompts, fn_def]
+    
+    def get_prompts(self):
+        return [p.prompt for p in self.prompts]
+    
+    def get_fn_defs(self):
+        return [fn.model_dump(mode="json") for fn in self.fn_def]

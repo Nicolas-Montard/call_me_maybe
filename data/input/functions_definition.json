@@ -67,5 +67,41 @@
     "returns": {
       "type": "string"
     }
+  },
+  {
+    "name": "fn_put_in_array",
+    "description": "concatenate two string together",
+    "parameters": {
+      "a": {
+        "type": "array"
+      }
+    },
+    "returns": {
+      "type": "string"
+    }
+  },
+  {
+    "name": "fn_create_user",
+    "description": "Create a new user from a user object and return the created user.",
+    "parameters": {
+        "user": {
+            "type": "object"
+        }
+    },
+    "returns": {
+        "type": "object"
+    }
+  },
+  {
+    "name": "fn_invert_boolean",
+    "description": "Invert a boolean value and return the result.",
+    "parameters": {
+        "value": {
+            "type": "boolean"
+        }
+    },
+    "returns": {
+        "type": "boolean"
+    }
   }
 ]
