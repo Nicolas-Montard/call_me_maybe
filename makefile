@@ -1,11 +1,21 @@
+FUNCTIONS_DEF ?=
+INPUT ?=
+OUTPUT ?=
+
 run: install
-	uv run -m src
+	uv run -m src \
+		$(if $(FUNCTIONS_DEF),--functions_definition $(FUNCTIONS_DEF)) \
+		$(if $(INPUT),--input $(INPUT)) \
+		$(if $(OUTPUT),--output $(OUTPUT))
 
 install:
 	uv sync
 
 debug: install
-	uv run -m pdb src/__main__.py
+	uv run -m pdb src/__main__.py \
+		$(if $(FUNCTIONS_DEF),--functions_definition $(FUNCTIONS_DEF)) \
+		$(if $(INPUT),--input $(INPUT)) \
+		$(if $(OUTPUT),--output $(OUTPUT))
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
