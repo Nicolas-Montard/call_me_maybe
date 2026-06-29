@@ -1,12 +1,12 @@
 try:
-    from pydantic import BaseModel, model_validator
+    from pydantic import BaseModel
 except ModuleNotFoundError as e:
     print("pydantic is not installed on this system")
     print(e)
     exit()
 import json
 from enum import Enum
-
+from typing import Any
 
 
 class TypeValue(str, Enum):
@@ -21,8 +21,10 @@ class TypeValue(str, Enum):
 class Prompt(BaseModel):
     prompt: str
 
+
 class Type(BaseModel):
     type: TypeValue
+
 
 class FunctionDef(BaseModel):
     name: str
@@ -36,15 +38,16 @@ class JsonManager(BaseModel):
     fn_def: list[FunctionDef]
 
     @staticmethod
-    def load_files(fn_def_path: str, prompt_path: str):
+    def load_files(fn_def_path: str, prompt_path: str) -> "JsonManager":
         with open(fn_def_path, "r") as file:
             fn_def = json.load(file)
         with open(prompt_path, "r") as file:
             prompts = json.load(file)
-        return [prompts, fn_def]
-    
-    def get_prompts(self):
+        return JsonManager.model_validate(
+            {"prompts": prompts, "fn_def": fn_def})
+
+    def get_prompts(self) -> list[str]:
         return [p.prompt for p in self.prompts]
-    
-    def get_fn_defs(self):
+
+    def get_fn_defs(self) -> list[dict[str, Any]]:
         return [fn.model_dump(mode="json") for fn in self.fn_def]
