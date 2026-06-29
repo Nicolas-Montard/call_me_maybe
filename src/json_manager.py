@@ -7,6 +7,7 @@ except ModuleNotFoundError as e:
 import json
 from enum import Enum
 from typing import Any
+import sys
 
 
 class TypeValue(str, Enum):
@@ -39,10 +40,14 @@ class JsonManager(BaseModel):
 
     @staticmethod
     def load_files(fn_def_path: str, prompt_path: str) -> "JsonManager":
-        with open(fn_def_path, "r") as file:
-            fn_def = json.load(file)
-        with open(prompt_path, "r") as file:
-            prompts = json.load(file)
+        try:
+            with open(fn_def_path, "r") as file:
+                fn_def = json.load(file)
+            with open(prompt_path, "r") as file:
+                prompts = json.load(file)
+        except json.JSONDecodeError as e:
+            print(f"Error: invalid JSON in input files: {e}")
+            sys.exit()
         return JsonManager.model_validate(
             {"prompts": prompts, "fn_def": fn_def})
 
